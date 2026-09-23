@@ -2,27 +2,28 @@
 
 ## Problem Prompt
 
-**Title:** Implementing a Custom `std::decay`  
+**Title:** Implementing a Custom `std::decay`
+
 **Difficulty:** Advanced (Senior C++ Engineer / Metaprogramming Focus)
 
 ### Problem Statement
 
 In C++, function arguments passed by value undergo standard conversions known as *decay*:
-- References are stripped.
-- Array types decay into pointers to their element types.
-- Function types decay into function pointers.
-- For all other types, top-level `const` and `volatile` qualifiers are removed.
+
+* References are stripped.
+* Array types decay into pointers to their element types.
+* Function types decay into function pointers.
+* For all other types, top-level `const` and `volatile` qualifiers are removed.
 
 Your task is to implement a custom type trait `my_decay<T>` and its companion template alias `my_decay_t<T>` without relying on `std::decay`.
 
 ### Requirements
+
 1. **Reference Stripping**: Must handle lvalue references (`&`) and rvalue references (`&&`).
 2. **Array Decay**: Types like `T[N]` or `T[]` must decay to `T*` (or `const T*` if the elements are const-qualified).
 3. **Function Decay**: Function types such as `R(Args...)` must decay to `R(*)(Args...)`.
 4. **Value Types**: All other non-array, non-function types must strip top-level cv-qualifiers (e.g., `const int` $\to$ `int`).
 5. **Ordering**: Ensure combinations like references to arrays (e.g., `int(&)[5]`) or references to functions (e.g., `void(&)(int)`) decay correctly to pointers.
-
----
 
 ## The Complete Solution
 
@@ -85,8 +86,6 @@ template <typename T>
 using my_decay_t = typename my_decay<T>::type;
 ```
 
----
-
 ## Detailed Technical Explanation
 
 ### 1. Order of Operations: Why References Must Be Stripped First
@@ -103,49 +102,66 @@ struct bad_decay {
 ```
 
 In the C++ type system:
-- `int[5]` is an array type.
-- `int(&)[5]` is a **reference type** (specifically, an lvalue reference to an array of 5 integers).
+* `int[5]` is an array type.
+* `int(&)[5]` is a **reference type** (specifically, an lvalue reference to an array of 5 integers).
 
 If we query `std::is_array<int(&)[5]>`, it inherits from `std::false_type`. Therefore, the transformation pipeline **must** be sequential:
 
-$$\text{Input } T \xrightarrow{\text{remove\_reference}} U \xrightarrow{\text{classify } U} \begin{cases} 
-\text{Array} \implies \text{remove\_extent\_t}\langle U \rangle^* \\
-\text{Function} \implies \text{add\_pointer\_t}\langle U \rangle \\
-\text{Other} \implies \text{remove\_cv\_t}\langle U \rangle
-\end{cases}$$
+```
+Input T ---> [ remove_reference ] ---> U
+                                       |
+       +-------------------------------+-------------------------------+
+       |                               |                               |
+  Is Array?                       Is Function?                   Other Type
+       |                               |                               |
+       v                               v                               v
+remove_extent_t<U>*             add_pointer_t<U>                remove_cv_t<U>
+```
+
+In mathematical notation:
+
+$$
+T \xrightarrow{\text{remove\_reference}} U \implies \begin{cases} 
+\text{Array:} & \text{remove\_extent\_t}\langle U \rangle^* \\ 
+\text{Function:} & \text{add\_pointer\_t}\langle U \rangle \\ 
+\text{Other:} & \text{remove\_cv\_t}\langle U \rangle 
+\end{cases}
+$$
 
 ### 2. Array Extent vs. Pointer Conversion
 
 When an array decays, only the *first* extent is converted to a pointer:
-- 1D Array: `int[5]` $\to$ `int*`
-- Multidimensional Array: `int[5][10]` $\to$ `int(*)[10]`
+
+* 1D Array: `int[5]` $\to$ `int*`
+* Multidimensional Array: `int[5][10]` $\to$ `int(*)[10]`
 
 `std::remove_extent_t<U>` removes only the outermost dimension:
-- `std::remove_extent_t<int[5][10]>` is `int[10]`.
-- Appending `*` results in `int(*)[10]`, which matches the exact behavior of language-level array-to-pointer decay.
+* `std::remove_extent_t<int[5][10]>` is `int[10]`.
+* Appending `*` results in `int(*)[10]`, which matches the exact behavior of language-level array-to-pointer decay.
 
 Furthermore, `remove_extent` preserves qualifiers on the element itself:
-- `const int[3]` has extent removed to yield `const int`.
-- Adding `*` produces `const int*` (pointer to `const int`).
+* `const int[3]` has extent removed to yield `const int`.
+* Adding `*` produces `const int*` (pointer to `const int`).
 
 ### 3. Function Pointers
 
 A function signature cannot exist as a standalone runtime value; it exists as code in memory. In C and C++, passing a function name to a parameter expecting a value causes the function to decay into a function pointer:
 
-$$\text{void(int, double)} \xrightarrow{\text{decay}} \text{void(*)(int, double)}$$
+$$
+\text{void}(\text{int}, \text{double}) \xrightarrow{\text{decay}} \text{void}(*)(\text{int}, \text{double})
+$$
 
 Applying `std::add_pointer_t<U>` directly to a function type transforms the function signature into its corresponding pointer type.
 
 ### 4. Non-Array, Non-Function Types
 
 For normal types (integers, pointers, structs, etc.), references have already been stripped. Decay only strips top-level `const` and `volatile` qualifiers:
-- `const int` $\to$ `int`
-- `int * const` (const pointer to int) $\to$ `int*` (pointer to int)
-- `const int*` (pointer to const int) $\to$ `const int*` (the `const` is low-level, so it remains)
+
+* `const int` $\to$ `int`
+* `int * const` (const pointer to int) $\to$ `int*` (pointer to int)
+* `const int*` (pointer to const int) $\to$ `const int*` (the `const` is low-level, so it remains)
 
 `std::remove_cv_t<U>` handles this by stripping top-level qualifiers from $U$.
-
----
 
 ## Verification and Test Cases
 
@@ -154,7 +170,6 @@ Below is a test suite using `static_assert` to validate all standard decay behav
 ```cpp
 #include <type_traits>
 
-// Test setup
 void test_decay() {
     // 1. Primitive scalars & qualifiers
     static_assert(std::is_same_v<my_decay_t<int>, int>);
@@ -185,14 +200,13 @@ void test_decay() {
 }
 ```
 
----
-
 ## Interviewer Follow-Up Questions
 
 1. **How would you implement `remove_extent` from scratch?**
    * *Answer*: Using partial template specialization pattern matching `T[N]` and `T[]`.
+
 2. **How does `std::is_function` differentiate between a class type and a function type?**
    * *Answer*: A type `T` is a function if and only if `!std::is_reference_v<T>` and `!std::is_const_v<const T>` (since function types cannot be `const`-qualified at the top level).
+
 3. **Where is `std::decay` used in the Standard Library?**
    * *Answer*: In functions that take arguments by forwarding reference but store them by value, such as `std::make_pair`, `std::make_tuple`, and `std::thread` constructors.
-   * 
